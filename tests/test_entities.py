@@ -79,6 +79,16 @@ class EntityTests(unittest.TestCase):
 
         self.assertEqual(cards, [first, second])
 
+    def test_factory_uses_selected_card_skin_folder(self):
+        dark_factory = CardFactory(asset_root=Path("."), skin="dark")
+        light_factory = CardFactory(asset_root=Path("."), skin="light")
+
+        dark_card = dark_factory.create_card(rank="A", suit="H")
+        light_card = light_factory.create_card(rank="A", suit="H")
+
+        self.assertTrue(dark_card.asset_path.endswith("assets(beta)/cards/cards/dark/A-H.png"))
+        self.assertTrue(light_card.asset_path.endswith("assets(beta)/cards/cards/light/A-H.png"))
+
     def test_jokers_modify_each_card(self):
         cards = EntityCollection()
 

@@ -21,6 +21,7 @@ from states.base_state import BaseState
 from Renderer import Renderer
 from animaciones import AnimationController
 from audio import get_audio_manager
+from menu.gestor_config import GestorConfig
 from entities import (
     CardEntity,
     CardFactory,
@@ -55,7 +56,8 @@ class PlayState(BaseState):
         self.renderer = Renderer(*screen.get_size(), screen=screen)
         self.animations = AnimationController()
         self.rules = GameRules()
-        self.card_factory = CardFactory(self._project_root())
+        self.background = self._load_background()
+        self.card_factory = CardFactory(self._project_root(), skin=GestorConfig.obtener_skin_activa())
         self.cards = EntityCollection[CardEntity]()
 
         self.message = "Selecciona de 1 a 5 cartas y presiona ESPACIO"
@@ -75,6 +77,7 @@ class PlayState(BaseState):
 
     def enter(self):
         """Activa el estado y recupera desde context la ciega y los Jokers actuales."""
+        self.card_factory.set_skin(GestorConfig.obtener_skin_activa())
         self.audio.play_game_music()
         self.round_number = int(self.context.get("round", self.round_number))
         self.target = int(
@@ -87,16 +90,29 @@ class PlayState(BaseState):
         self.reset_round()
 
     def exit(self):
-        """Cancela animaciones y detiene la música al abandonar la mesa."""
+        """Cancela animaciones y conserva la música principal del juego en bucle."""
         self.animations.cancel()
-        self.audio.stop_music()
 
     def _project_root(self) -> Path:
         """Obtiene la carpeta raíz del proyecto para localizar recursos."""
         return Path(__file__).resolve().parent.parent
 
+    def _load_background(self) -> pygame.Surface | None:
+        """Carga el fondo configurado para la mesa de juego."""
+        ruta_fondo = GestorConfig.obtener_fondo_juego()
+        if not ruta_fondo:
+            return None
+        try:
+            fondo = pygame.image.load(ruta_fondo).convert_alpha()
+            if fondo.get_size() != self.screen.get_size():
+                fondo = pygame.transform.smoothscale(fondo, self.screen.get_size())
+            return fondo
+        except Exception:
+            return None
+
     def reset_round(self) -> None:
         """Reinicia manos, descartes, puntaje y genera las cartas de la ciega."""
+        self.card_factory.set_skin(GestorConfig.obtener_skin_activa())
         self.hands_left = 4
         self.discards_left = 3
         self.round_score = 0
@@ -328,31 +344,35 @@ class PlayState(BaseState):
         """Sincroniza los Rect de las cartas con la distribución usada por Renderer."""
         spacing = 95
         start_x = (self.screen.get_width() - (len(self.cards) * spacing)) // 2 + 100
-        start_y = self.screen.get_height() - 160
+        start_y = self.screen.get_height() - 120
         for index, card in enumerate(self.cards):
             if card.rect:
                 card.rect.x = start_x + index * spacing
                 card.rect.y = start_y - (20 if card.selected else 0)
 
-        # Los botones quedan inmediatamente debajo de la mano.
+        # Los botones quedan justo debajo de la mano.
         self.sort_suit_rect = pygame.Rect(
             self.screen.get_width() // 2 - 140,
-            self.screen.get_height() - 28,
+            self.screen.get_height() - 62,
             130,
-            22,
+            26,
         )
         self.sort_rank_rect = pygame.Rect(
             self.screen.get_width() // 2 + 10,
-            self.screen.get_height() - 28,
+            self.screen.get_height() - 62,
             130,
-            22,
+            26,
         )
 
     def draw(self, screen: pygame.Surface | None = None) -> None:
         """Renderiza HUD, Jokers, mano, botones de orden y mensajes."""
         target_screen = screen or self.screen
         self._sync_card_rects()
-        self.renderer.clear()
+        if self.background is not None:
+            target_screen.blit(self.background, (0, 0))
+        else:
+            self.renderer.clear()
+        self.renderer.draw_round_progress_bar(self.round_score, self.target)
 
         selected_cards = self._selected_cards()
         result = self.rules.evaluate(selected_cards) if selected_cards else None
@@ -382,7 +402,7 @@ class PlayState(BaseState):
 
         font = pygame.font.SysFont("Arial", 18, bold=True)
         text = font.render(self.message, True, (255, 255, 255))
-        target_screen.blit(text, (300, target_screen.get_height() - 52))
+        target_screen.blit(text, (300, target_screen.get_height() - 92))
 
     def _draw_sort_buttons(self, screen: pygame.Surface) -> None:
         """Dibuja las dos acciones para ordenar la mano."""

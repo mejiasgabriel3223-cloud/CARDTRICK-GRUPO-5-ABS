@@ -41,6 +41,7 @@ class Renderer:
         self._cache_stats_val = None
         self._cache_stats_surf = None
         self._card_text_cache = {}
+        self._card_surface_cache = {}
 
     def clear(self):
         self.screen.fill(COLOR_BG)
@@ -53,6 +54,21 @@ class Renderer:
         card_rect = pygame.Rect(x, y + offset_y, w, h)
         shadow_rect = pygame.Rect(x + 3, y + offset_y + 3, w, h)
         pygame.draw.rect(self.screen, (10, 10, 15), shadow_rect, border_radius=6)
+
+        asset_path = str(card_data.get("asset_path", "")).strip()
+        if asset_path:
+            cached_surface = self._card_surface_cache.get(asset_path)
+            if cached_surface is None:
+                try:
+                    cached_surface = pygame.image.load(asset_path).convert_alpha()
+                except Exception:
+                    cached_surface = None
+                self._card_surface_cache[asset_path] = cached_surface
+            if cached_surface is not None:
+                surface = pygame.transform.smoothscale(cached_surface, (w, h))
+                self.screen.blit(surface, (x, y + offset_y))
+                return
+
         pygame.draw.rect(self.screen, COLOR_CARD_BG, card_rect, border_radius=6)
         border_color = COLOR_SELECTED if is_selected else COLOR_CARD_BORDER
         pygame.draw.rect(self.screen, border_color, card_rect, width=2, border_radius=6)
@@ -65,13 +81,13 @@ class Renderer:
         self.screen.blit(self._card_text_cache[card_key], (x + 8, y + offset_y + 8))
 
     def draw_joker(self, joker_data, x, y, is_active=False):
-        rect = pygame.Rect(x, y, 80, 110)
+        rect = pygame.Rect(x, y, 80, 85)
         bg_color = COLOR_JOKER_ACTIVE if is_active else COLOR_JOKER_BG
         pygame.draw.rect(self.screen, bg_color, rect, border_radius=8)
         pygame.draw.rect(self.screen, (220, 220, 250), rect, width=2, border_radius=8)
         name_str = joker_data.get("name", "Joker")[:8]
         txt_surface = self.font_main.render(name_str, True, COLOR_TEXT_MAIN)
-        self.screen.blit(txt_surface, (x + 5, y + 40))
+        self.screen.blit(txt_surface, (x + 5, y + 28))
 
     def draw_consumable(self, item_data, x, y):
         rect = pygame.Rect(x, y, 65, 95)
@@ -103,10 +119,26 @@ class Renderer:
         self.screen.blit(self._cache_mult_surf, (35, 175))
         self.screen.blit(self._cache_stats_surf, (35, 230))
 
+    def draw_round_progress_bar(self, score, target):
+        bar_width = 760
+        bar_height = 14
+        x = self.width - bar_width - 30
+        y = 18
+        progress = 0.0 if target <= 0 else min(1.0, max(0.0, score / target))
+
+        pygame.draw.rect(self.screen, (42, 48, 58), (x, y, bar_width, bar_height), border_radius=7)
+        pygame.draw.rect(self.screen, (70, 200, 120), (x, y, int(bar_width * progress), bar_height), border_radius=7)
+        pygame.draw.rect(self.screen, (255, 255, 255), (x, y, bar_width, bar_height), width=2, border_radius=7)
+
+        title = self.font_main.render("PROGRESO", True, (255, 255, 255))
+        details = self.font_main.render(f"PUNTAJE ACTUAL: {score} / META: {target}", True, (255, 255, 255))
+        self.screen.blit(title, (x, y - 18))
+        self.screen.blit(details, (x, y + 20))
+
     def draw_joker_bar(self, jokers_list):
         start_x = 300
         for i, joker in enumerate(jokers_list):
-            self.draw_joker(joker, start_x + i * 90, 30, is_active=joker.get("active", False))
+            self.draw_joker(joker, start_x + i * 90, 42, is_active=joker.get("active", False))
 
     def draw_consumables_bar(self, consumables_list):
         start_x = 980

@@ -2,9 +2,12 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 import pygame
 
+from menu.gestor_config import GestorConfig
 from states.play_state import PlayState
 from states.store_state import StoreState
 from entities import CardEntity
@@ -24,6 +27,15 @@ class StorePlayLogicTests(unittest.TestCase):
     def _card(suit: str, rank: str) -> CardEntity:
         """Construye una carta mínima usando la firma esperada por el proyecto."""
         return CardEntity(rank=rank, suit=suit)
+
+    def test_game_background_can_be_loaded_from_config(self):
+        with patch("menu.gestor_config.GestorConfig.cargar_configuracion", return_value={
+            "recursos": {"fondo_juego": "assets/custom_game_bg.png"}
+        }):
+            fondo = GestorConfig.obtener_fondo_juego()
+
+        self.assertEqual(Path(fondo).name, "custom_game_bg.png")
+        self.assertTrue(Path(fondo).suffix.lower() == ".png")
 
     def test_store_reward_is_saved_from_leftover_resources(self):
         context = {

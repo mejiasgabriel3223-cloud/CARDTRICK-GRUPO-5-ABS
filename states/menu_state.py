@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 import pygame
 from audio import get_audio_manager
+from menu.boton import Boton
+from menu.gestor_config import GestorConfig
 
 try:
     import cv2
@@ -18,39 +20,6 @@ except Exception:
 BASE_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = BASE_DIR / "assets"
 CONFIG_DIR = BASE_DIR / "menu"
-
-
-# =====================================================================
-# GESTOR DE CONFIGURACIÓN
-# =====================================================================
-
-class GestorConfig:
-    """Gestiona rutas y carga la configuración JSON con un fallback por defecto."""
-
-    @staticmethod
-    def cargar_configuracion():
-        ruta_json = CONFIG_DIR / "menu_config.json"
-        
-        config_defecto = {
-            "opciones_principal": [
-                {"texto": "JUGAR", "accion": "JUGAR", "ancho": 180, "alto": 70},
-                {"texto": "RECORDS", "accion": "PANTALLA_RECORDS", "ancho": 180, "alto": 70},
-                {"texto": "SALIR", "accion": "SALIR", "ancho": 180, "alto": 70}
-            ]
-        }
-
-        if not ruta_json.exists():
-            return config_defecto
-
-        try:
-            with open(ruta_json, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if not data.get("opciones_principal"):
-                    data["opciones_principal"] = config_defecto["opciones_principal"]
-                return data
-        except Exception as e:
-            print(f"Advertencia cargando {ruta_json}: {e}. Usando configuración por defecto.")
-            return config_defecto
 
 
 # =====================================================================
@@ -92,6 +61,45 @@ class PantallaBase(ABC):
 
     def actualizar(self):
         pass
+
+
+class PantallaConfiguracion(PantallaBase):
+    """Pantalla de configuracion para seleccionar la skin de las cartas."""
+
+    def __init__(self, gestor_estado, config):
+        super().__init__(gestor_estado, config)
+        self.skin_actual = GestorConfig.obtener_skin_activa()
+        ancho = 220
+        alto = 52
+        centro_x = 640
+        self.botones = [
+            Boton(centro_x - ancho - 18, 260, ancho, alto, "Skin negra", color_normal=(60, 65, 72), color_hover=(95, 110, 130), color_texto=(255, 255, 255), font_size=26, radio=12, accion="dark"),
+            Boton(centro_x + 18, 260, ancho, alto, "Skin blanca", color_normal=(230, 230, 235), color_hover=(255, 255, 255), color_texto=(30, 30, 35), font_size=26, radio=12, accion="light"),
+        ]
+
+    def manejar_eventos(self, eventos):
+        mouse_pos = pygame.mouse.get_pos()
+        for evento in eventos:
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                for boton in self.botones:
+                    accion = boton.manejar_evento(evento)
+                    if accion:
+                        GestorConfig.cambiar_skin(accion)
+                        self.skin_actual = GestorConfig.obtener_skin_activa()
+                        self.gestor_estado.config = GestorConfig.cargar_configuracion()
+                        self.gestor_estado.cambiar_estado("PRINCIPAL")
+                        return
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+                self.gestor_estado.cambiar_estado("PRINCIPAL")
+        self.mouse_pos = mouse_pos
+
+    def dibujar(self, pantalla):
+        self.dibujar_texto_centrado(pantalla, "Configuracion", 120, 82, (255, 255, 255))
+        self.dibujar_texto_centrado(pantalla, f"Skin activa: {('negra' if self.skin_actual == 'dark' else 'blanca')}", 185, 32, (220, 220, 220))
+        mouse_pos = pygame.mouse.get_pos()
+        for boton in self.botones:
+            boton.dibujar(pantalla, mouse_pos)
+        self.dibujar_texto_centrado(pantalla, "Haz clic para cambiar la skin de las cartas", 520, 26, (200, 200, 200))
 
 
 class PantallaPrincipal(PantallaBase):
@@ -173,6 +181,8 @@ class PantallaPrincipal(PantallaBase):
             self.gestor_estado.cambiar_estado("NAME_INPUT")
         elif accion == "SALIR":
             self.gestor_estado.senal_salida = "SALIR"
+        elif accion in ("PANTALLA_CONFIGURACION", "CONFIGURACION"):
+            self.gestor_estado.cambiar_estado("CONFIGURACION")
         elif accion == "PANTALLA_RECORDS":
             self.gestor_estado.cambiar_estado("RECORDS")
         elif accion == "PANTALLA_TEXTO":
@@ -347,11 +357,18 @@ class MenuState:
         if not self.cap:
             self.surface_video = pygame.Surface(screen.get_size())
             self.surface_video.fill((15, 25, 45))
+        else:
+            ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = cv2.resize(frame, (screen.get_width(), screen.get_height()))
+                self.surface_video = pygame.image.frombuffer(frame.tobytes(), frame.shape[1::-1], "RGB")
 
         # Registrar subpantallas
         self.pantallas = {
             "PRINCIPAL": PantallaPrincipal(self, self.config),
             "NAME_INPUT": PantallaInputNombre(self, self.config),
+            "CONFIGURACION": PantallaConfiguracion(self, self.config),
             "RECORDS": PantallaRecords(self, self.config),
             "REPLACE_PROMPT": PantallaPromptRecord(self, self.config)
         }
@@ -364,7 +381,8 @@ class MenuState:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     def exit(self):
-        self.audio.stop_music()
+        """La música se mantiene en bucle desde que se inicia el juego hasta cerrar la aplicación."""
+        pass
 
     def cambiar_estado(self, nombre_estado):
         if nombre_estado in self.pantallas:

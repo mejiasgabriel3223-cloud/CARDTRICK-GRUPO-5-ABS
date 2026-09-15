@@ -12,7 +12,7 @@ class AudioManager:
 
     MUSIC_FILES = {
         "menu": "MENUMUSIC.mp3",
-        "game": "GAMEMUSIC.mp3",
+        "game": "MENUMUSIC.mp3",
     }
 
     def __init__(self, project_root: Path | None = None) -> None:
@@ -22,6 +22,7 @@ class AudioManager:
         self.sfx_volume = 1.0
         self.enabled = self._initialize_mixer()
         self._sounds: dict[str, pygame.mixer.Sound] = {}
+        self._current_music_key: str | None = None
 
     def _initialize_mixer(self) -> bool:
         try:
@@ -40,27 +41,30 @@ class AudioManager:
         return self.audio_dir / filename
 
     def play_music(self, track_name: str, loops: int = -1) -> bool:
-        """Reproduce una pista registrada y devuelve si pudo iniciarse."""
+        """Reproduce una pista registrada y mantiene la misma música en bucle."""
         if not self.enabled:
             return False
 
+        track_name = "menu" if track_name not in self.MUSIC_FILES else track_name
         track_path = self._music_path(track_name)
         if track_path is None or not track_path.exists():
             return False
 
         try:
-            pygame.mixer.music.stop()
-            pygame.mixer.music.load(str(track_path))
-            pygame.mixer.music.set_volume(self.music_volume)
-            pygame.mixer.music.play(loops)
+            if self._current_music_key != track_name or not pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load(str(track_path))
+                pygame.mixer.music.set_volume(self.music_volume)
+                pygame.mixer.music.play(loops)
+                self._current_music_key = track_name
             return True
         except pygame.error as error:
             print(f"No se pudo reproducir {track_name}: {error}")
             return False
 
     def stop_music(self) -> None:
-        if self.enabled:
-            pygame.mixer.music.stop()
+        """Se mantiene inactivo para evitar cortar la música principal del juego."""
+        self._current_music_key = None
 
     def pause_music(self) -> None:
         if self.enabled:
@@ -106,7 +110,7 @@ class AudioManager:
 
     def play_game_music(self, bg_type: int = 0) -> bool:
         del bg_type
-        return self.play_music("game")
+        return self.play_music("menu")
 
 
 _audio_manager: AudioManager | None = None

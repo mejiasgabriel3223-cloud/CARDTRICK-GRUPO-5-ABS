@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import random
+import sys
 from pathlib import Path
 from uuid import uuid4
 
 import pygame
 
-from .entities import CardEntity, RANK_VALUES
+try:
+    from .entities import CardEntity, RANK_VALUES
+except ImportError:
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from entities.entities import CardEntity, RANK_VALUES
 
 
 class CardFactory:
@@ -23,11 +30,29 @@ class CardFactory:
     RANKS = ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
     SUITS = ("C", "D", "H", "S")
     SUIT_SYMBOLS = {"C": "♣", "D": "♦", "H": "♥", "S": "♠"}
+    SKINS = {"dark", "light"}
 
-    def __init__(self, asset_root: str | Path = ".", card_size: tuple[int, int] = (90, 130)) -> None:
-        """Configure the asset root and the default size of generated Rects."""
+    def __init__(
+        self,
+        asset_root: str | Path = ".",
+        card_size: tuple[int, int] = (90, 130),
+        skin: str = "dark",
+    ) -> None:
+        """Configure the asset root, the active card skin and the default size of generated Rects."""
         self.asset_root = Path(asset_root)
         self.card_size = card_size
+        self.skin = self._normalize_skin(skin)
+
+    def set_skin(self, skin: str) -> None:
+        """Switch the active skin used when resolving each card image."""
+        self.skin = self._normalize_skin(skin)
+
+    @staticmethod
+    def _normalize_skin(skin: str) -> str:
+        value = str(skin or "dark").strip().lower()
+        if value in {"light", "blanca", "white", "clara"}:
+            return "light"
+        return "dark"
 
     def create_random_card(self, x: int = 0, y: int = 0) -> CardEntity:
         """Create one card by randomly choosing a rank and a suit."""
@@ -61,27 +86,54 @@ class CardFactory:
         return [self.create_random_card() for _ in range(amount)]
 
     def _resolve_asset(self, rank: str, suit: str) -> Path:
-        """Resolve a card image path using the repository's existing asset naming.
-
-        The current project stores dark card images in
-        ``assets(beta)/cards/cards/dark``. The logical suit ``S`` represents
-        spades, but the current asset filename uses ``P``; that translation is
-        performed only here so the domain representation stays stable.
-        """
-        # Convert the logical spade code into the filename code used by the assets.
+        """Resolve a card image path using the repository's asset naming and selected skin."""
         asset_suit = "P" if suit == "S" else suit
-        candidates = (
-            self.asset_root / "assets(beta)" / "cards" / "cards" / "dark" / f"{rank}-{asset_suit}.png",
-            self.asset_root / "assets(beta)" / "cards" / "cards" / "light" / f"{rank}-{asset_suit}.png",
-            self.asset_root / "assets(beta)" / "cards" / "cards" / "dark" / f"{rank}{asset_suit}.png",
-        )
+        normalized_rank = str(rank).strip()
+        rank_aliases = []
+        if normalized_rank.upper() in {"A", "1", "14"}:
+            rank_aliases = ["1", "14", "A"]
+        elif normalized_rank.upper() in {"J", "11"}:
+            rank_aliases = ["11", "J"]
+        elif normalized_rank.upper() in {"Q", "12"}:
+            rank_aliases = ["12", "Q"]
+        elif normalized_rank.upper() in {"K", "13"}:
+            rank_aliases = ["13", "K"]
+        else:
+            rank_aliases = [normalized_rank]
+
+        preferred_skin = self.skin
+        alternative_skin = "light" if preferred_skin == "dark" else "dark"
+        preferred_dir = self.asset_root / "assets(beta)" / "cards" / "cards" / preferred_skin
+        alternative_dir = self.asset_root / "assets(beta)" / "cards" / "cards" / alternative_skin
+
+        candidates = []
+        for rank_alias in rank_aliases:
+            candidates.extend([
+                preferred_dir / f"{rank_alias}-{asset_suit}.png",
+                preferred_dir / f"{rank_alias}{asset_suit}.png",
+                preferred_dir / f"{rank_alias}-{asset_suit}.PNG",
+                preferred_dir / f"{rank_alias}{asset_suit}.PNG",
+            ])
+            candidates.extend([
+                alternative_dir / f"{rank_alias}-{asset_suit}.png",
+                alternative_dir / f"{rank_alias}{asset_suit}.png",
+                alternative_dir / f"{rank_alias}-{asset_suit}.PNG",
+                alternative_dir / f"{rank_alias}{asset_suit}.PNG",
+            ])
+
         for candidate in candidates:
             if candidate.exists():
-                return candidate
-        # Return the preferred location even when the asset has not been found yet.
-        return candidates[0]
+                return candidate.resolve().as_posix()
+        return candidates[0].resolve().as_posix()
 
     @staticmethod
     def _base_score(rank: str) -> int:
         """Return the default numeric score assigned from the card rank."""
         return RANK_VALUES[rank]
+
+
+if __name__ == "__main__":
+    factory = CardFactory(asset_root=Path(__file__).resolve().parent.parent, skin="dark")
+    for rank, suit in [("A", "H"), ("10", "D"), ("2", "C")]:
+        card = factory.create_card(rank, suit)
+        print(f"{rank}-{suit} -> {card.asset_path}")
