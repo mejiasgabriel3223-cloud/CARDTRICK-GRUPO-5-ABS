@@ -1,4 +1,4 @@
-"""Create random card entities and connect them to existing visual assets."""
+"""Crea entidades de cartas aleatorias y las vincula con los recursos visuales existentes."""
 
 from __future__ import annotations
 
@@ -19,12 +19,12 @@ except ImportError:
 
 
 class CardFactory:
-    """Build card entities without owning or managing the deck itself.
+    """Construye entidades de cartas sin poseer ni gestionar la baraja en sí.
 
-    The factory has one responsibility: translate logical card data into a
-    ``CardEntity`` that already contains its visual metadata. It can create
-    single cards or batches, and because every creation is independent,
-    duplicate rank/suit combinations are naturally allowed.
+    La fábrica tiene una sola responsabilidad: traducir los datos lógicos de una
+    carta en un ``CardEntity`` que ya contiene sus metadatos visuales. Puede crear
+    cartas individuales o por lotes, y debido a que cada creación es independiente,
+    se permiten naturalmente combinaciones duplicadas de rango/palo.
     """
 
     RANKS = ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
@@ -38,13 +38,13 @@ class CardFactory:
         card_size: tuple[int, int] = (90, 130),
         skin: str = "dark",
     ) -> None:
-        """Configure the asset root, the active card skin and the default size of generated Rects."""
+        """Configura la raíz de recursos, el tema activo y el tamaño por defecto de los Rects generados."""
         self.asset_root = Path(asset_root)
         self.card_size = card_size
         self.skin = self._normalize_skin(skin)
 
     def set_skin(self, skin: str) -> None:
-        """Switch the active skin used when resolving each card image."""
+        """Cambia el tema (skin) activo utilizado al resolver cada imagen de carta."""
         self.skin = self._normalize_skin(skin)
 
     @staticmethod
@@ -55,18 +55,18 @@ class CardFactory:
         return "dark"
 
     def create_random_card(self, x: int = 0, y: int = 0) -> CardEntity:
-        """Create one card by randomly choosing a rank and a suit."""
-        # Each choice is independent, so repeated cards are possible.
+        """Crea una carta eligiendo aleatoriamente un rango y un palo."""
+        # Cada elección es independiente, por lo que es posible obtener cartas repetidas.
         rank = random.choice(self.RANKS)
         suit = random.choice(self.SUITS)
         return self.create_card(rank, suit, x, y)
 
     def create_card(self, rank: str, suit: str, x: int = 0, y: int = 0) -> CardEntity:
-        """Create one validated card with its Rect and asset path configured."""
+        """Crea una carta validada con su Rect y la ruta de la imagen configurada."""
         if rank not in self.RANKS or suit not in self.SUITS:
-            raise ValueError("Invalid card rank or suit")
+            raise ValueError("Rango o palo de carta no válido")
 
-        # The factory owns Rect creation, while the Renderer remains responsible for drawing.
+        # La fábrica gestiona la creación del Rect, mientras que el Renderer se encarga del dibujado.
         rect = pygame.Rect(x, y, *self.card_size)
         asset_path = self._resolve_asset(rank, suit)
         return CardEntity(
@@ -80,13 +80,13 @@ class CardFactory:
         )
 
     def create_random_collection(self, amount: int) -> list[CardEntity]:
-        """Create ``amount`` independent random cards in a standard Python list."""
+        """Crea una cantidad ``amount`` de cartas aleatorias independientes en una lista estándar de Python."""
         if amount < 0:
-            raise ValueError("amount cannot be negative")
+            raise ValueError("la cantidad no puede ser negativa")
         return [self.create_random_card() for _ in range(amount)]
 
     def _resolve_asset(self, rank: str, suit: str) -> Path:
-        """Resolve a card image path using the repository's asset naming and selected skin."""
+        """Resuelve la ruta de la imagen usando la convención de nombres y la skin seleccionada."""
         asset_suit = "P" if suit == "S" else suit
         normalized_rank = str(rank).strip()
         rank_aliases = []
@@ -128,7 +128,7 @@ class CardFactory:
 
     @staticmethod
     def _base_score(rank: str) -> int:
-        """Return the default numeric score assigned from the card rank."""
+        """Devuelve el puntaje numérico por defecto asignado a partir del rango de la carta."""
         return RANK_VALUES[rank]
 
 

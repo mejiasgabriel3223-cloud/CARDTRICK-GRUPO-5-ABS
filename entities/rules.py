@@ -1,4 +1,4 @@
-"""Global game rules, hand evaluation, and final score calculation."""
+"""Reglas globales del juego, evaluación de manos y cálculo del puntaje final."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .entities import CardEntity, RANK_VALUES
 
 @dataclass(frozen=True)
 class HandResult:
-    """Store the immutable result produced by one hand evaluation."""
+    """Almacena el resultado inmutable producido por la evaluación de una mano."""
 
     name: str
     score: int
@@ -20,16 +20,16 @@ class HandResult:
 
     @property
     def total(self) -> int:
-        """Return the final score obtained by multiplying score and multiplier."""
+        """Devuelve el puntaje final obtenido al multiplicar las fichas (score) por el multiplicador."""
         return int(self.score * self.multiplier)
 
 
 class GameRules:
-    """Centralize global score/multiplier values and poker-hand evaluation.
+    """Centraliza los valores globales de fichas/multiplicadores y la evaluación de manos de póker.
 
-    ``score`` and ``multiplier`` act as the shared base values described by the
-    project design. Cards retain their own mutable modifiers, so Jokers can
-    change individual cards before this class calculates the final result.
+    ``score`` y ``multiplier`` actúan como los valores base compartidos descritos por el
+    diseño del proyecto. Las cartas conservan sus propios modificadores mutables, por lo que los
+    Comodines pueden cambiar cartas individuales antes de que esta clase calcule el resultado final.
     """
 
     HAND_VALUES = {
@@ -45,26 +45,26 @@ class GameRules:
     }
 
     def __init__(self, score: int = 0, multiplier: float = 1.0) -> None:
-        """Create the rule object with global base score and multiplier."""
+        """Crea el objeto de reglas con un puntaje y multiplicador base globales."""
         self.score = int(score)
         self.multiplier = float(multiplier)
 
     def reset(self, score: int = 0, multiplier: float = 1.0) -> None:
-        """Replace the global score and multiplier with new base values."""
+        """Reemplaza el puntaje y multiplicador globales con nuevos valores base."""
         self.score = int(score)
         self.multiplier = float(multiplier)
 
     def evaluate(self, cards: Sequence[CardEntity]) -> HandResult:
-        """Identify a hand and combine global values with per-card modifiers.
+        """Identifica una mano y combina los valores globales con los modificadores por carta.
 
-        The method expects between 1 and 5 played cards. The returned
-        ``HandResult`` contains the hand type, calculated score, multiplier,
-        and a ``total`` property representing the final product.
+        El método espera entre 1 y 5 cartas jugadas. El ``HandResult`` devuelto
+        contiene el tipo de mano, las fichas calculadas, el multiplicador y una
+        propiedad ``total`` que representa el producto final.
         """
         if not 1 <= len(cards) <= 5:
-            raise ValueError("A played hand must contain between 1 and 5 cards")
+            raise ValueError("Una mano jugada debe contener entre 1 y 5 cartas")
 
-        # Convert logical ranks into numeric values for frequency/straight tests.
+        # Convierte los rangos lógicos en valores numéricos para pruebas de frecuencia y escaleras.
         ranks = [self._rank_value(card.rank) for card in cards]
         suits = [card.suit for card in cards]
         counts = Counter(ranks)
@@ -92,9 +92,9 @@ class GameRules:
             name = "High Card"
 
         base_score, base_multiplier = self.HAND_VALUES[name]
-        # Recursive summation keeps per-card score changes separate from global rules.
+        # La suma recursiva mantiene los cambios de fichas por carta separados de las reglas globales.
         card_score = self._sum_card_score_recursive(cards)
-        # A default card multiplier is 1.0, so only the added portion is summed.
+        # El multiplicador por defecto de una carta es 1.0, por lo que solo se suma la porción añadida.
         card_multiplier = sum(card.multiplier - 1.0 for card in cards)
 
         final_score = self.score + base_score + card_score
@@ -102,9 +102,9 @@ class GameRules:
         return HandResult(name, final_score, final_multiplier)
 
     def best_five(self, cards: Sequence[CardEntity]) -> tuple[CardEntity, ...]:
-        """Return the five-card combination with the highest calculated total."""
+        """Devuelve la combinación de cinco cartas con el total calculado más alto."""
         if not 1 <= len(cards):
-            raise ValueError("At least one card is required")
+            raise ValueError("Se requiere al menos una carta")
         if len(cards) <= 5:
             return tuple(cards)
         best = None
@@ -117,25 +117,25 @@ class GameRules:
         return tuple(best or cards[:5])
 
     def _sum_card_score_recursive(self, cards: Sequence[CardEntity], index: int = 0) -> int:
-        """Recursively add every card score until the sequence is exhausted."""
+        """Suma recursivamente el puntaje de cada carta hasta agotar la secuencia."""
         if index >= len(cards):
             return 0
-        # Add the current card and recursively process the next position.
+        # Suma la carta actual y procesa recursivamente la siguiente posición.
         return int(cards[index].score) + self._sum_card_score_recursive(cards, index + 1)
 
     @staticmethod
     def _rank_value(rank: str) -> int:
-        """Convert a rank label into its numeric comparison value."""
+        """Convierte una etiqueta de rango en su valor numérico de comparación."""
         if rank not in RANK_VALUES:
-            raise ValueError(f"Unknown rank: {rank}")
+            raise ValueError(f"Rango desconocido: {rank}")
         return RANK_VALUES[rank]
 
     @staticmethod
     def _is_straight(unique_ranks: list[int]) -> bool:
-        """Return whether five unique ranks form a standard or wheel straight."""
+        """Devuelve si cinco rangos únicos forman una escalera estándar o con As bajo."""
         if len(unique_ranks) != 5:
             return False
-        # Treat A-2-3-4-5 as the low ace straight.
+        # Trata A-2-3-4-5 como la escalera con As bajo.
         if unique_ranks == [2, 3, 4, 5, 14]:
             return True
         return unique_ranks == list(range(unique_ranks[0], unique_ranks[0] + 5))
