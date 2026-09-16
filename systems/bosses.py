@@ -1,13 +1,19 @@
 """
-Módulo: systems/bosses.py
-Descripción: Jerarquía de clases para Ciegas Jefe (La Aguja, El Gancho, La Muralla)
-             con selección sin repetición por partida.
+Boss blind domain model for the card game.
+
+This module keeps all boss-specific rules outside the Joker entity layer.
+The base class defines the common contract and concrete subclasses override
+only the behavior that belongs to their boss rule.
 """
 
-from abc import ABC, abstractmethod
-import random
+from __future__ import annotations
 
-# Tabla base de puntuaciones por Ante (1 a 8)
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+import random
+from typing import Any, Iterable
+
+
 BASE_ANTE_TARGETS = {
     1: 300,
     2: 800,
@@ -16,117 +22,312 @@ BASE_ANTE_TARGETS = {
     5: 11000,
     6: 20000,
     7: 35000,
-    8: 50000
+    8: 50000,
 }
 
 
-class BossBlind(ABC):
-    """Clase base abstracta para las Ciegas Jefe."""
+@dataclass(frozen=True)
+class BossValidationResult:
+    """Result returned when a boss validates a proposed played hand."""
 
-    def __init__(self, name: str, description: str, effect_id: str, score_multiplier: float = 2.0):
+    allowed: bool
+    message: str = ""
+
+
+@dataclass(frozen=True)
+class BossPostPlayResult:
+    """Result returned after a hand has been successfully played."""
+
+    discard_count: int = 0
+
+
+class BossBlind(ABC):
+    """Abstract base class for every boss blind.
+
+    Bosses expose a common interface so the game state does not need to know
+    which concrete boss is active. This is the polymorphic boundary between
+    the game flow and individual boss rules.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        effect_id: str,
+        score_multiplier: float = 2.0,
+    ) -> None:
         self.name = name
         self.description = description
         self.effect_id = effect_id
         self.score_multiplier = score_multiplier
 
-    def calculate_target_score(self, ante: int, custom_multiplier: float = 1.0) -> int:
-        """Calcula el puntaje objetivo según el Ante y multiplicadores propios/externos."""
-        base_score = BASE_ANTE_TARGETS.get(ante, int(50000 * (1.5 ** (ante - 8))))
-        final_score = base_score * self.score_multiplier * custom_multiplier
-        return int(final_score)
+    def calculate_target_score(
+        self,
+        ante: int,
+        custom_multiplier: float = 1.0,
+    ) -> int:
+        """Return the score target produced by this boss for an Ante."""
+        base_score = BASE_ANTE_TARGETS.get(
+            ante,
+            int(50000 * (1.5 ** (ante - 8))),
+        )
+        return int(base_score * self.score_multiplier * custom_multiplier)
 
-    @abstractmethod
-    def apply_effect(self, game_state: dict) -> dict:
-        """Aplica las modificaciones de reglas al estado del juego."""
-        pass
+    def validate_play(
+        self,
+        cards: Iterable[Any],
+        game_state: dict[str, Any],
+    ) -> BossValidationResult:
+        """Validate a proposed hand before it is scored.
 
-    def to_dict(self) -> dict:
+        Bosses that do not restrict card selection accept the hand unchanged.
+        """
+        del cards, game_state
+        return BossValidationResult(True)
+
+    def after_hand_played(
+        self,
+        cards: Iterable[Any],
+        game_state: dict[str, Any],
+    ) -> BossPostPlayResult:
+        """Return effects that must happen immediately after a played hand."""
+        del cards, game_state
+        return BossPostPlayResult()
+
+    def get_max_play_size(self, default_size: int) -> int:
+        """Return the maximum number of cards allowed in one played hand."""
+        return default_size
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return UI-safe boss metadata without exposing implementation data."""
         return {
             "name": self.name,
             "description": self.description,
             "effect_id": self.effect_id,
-            "multiplier": self.score_multiplier
+            "multiplier": self.score_multiplier,
         }
 
+    @abstractmethod
+    def apply_effect(self, game_state: dict[str, Any]) -> dict[str, Any]:
+        """Apply persistent boss state when the boss becomes active."""
+        raise NotImplementedError
 
-# =============================================================================
-# JEFES PERMITIDOS
-# =============================================================================
 
 class HookBoss(BossBlind):
-    """El Gancho: Descarta 2 cartas al azar tras jugar una mano."""
+    """The Hook: discard two random cards after every played hand."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="El Gancho",
-            description="Descarta 2 cartas al azar de tu mano tras jugar una mano",
+            description="Después de jugar una mano, descarta 2 cartas al azar.",
             effect_id="hook",
-            score_multiplier=2.0
+            score_multiplier=2.0,
         )
 
-    def apply_effect(self, game_state: dict) -> dict:
-        # Se ejecuta después de evaluar la mano en el loop de juego
-        hand = game_state.get("hand", [])
-        if len(hand) > 2:
-            discarded = random.sample(hand, 2)
-            game_state["hand"] = [c for c in hand if c not in discarded]
-        else:
-            game_state["hand"] = []
+    def apply_effect(self, game_state: dict[str, Any]) -> dict[str, Any]:
+        """Publish the post-play discard rule to the active game state."""
+        game_state["boss_post_play_discard_count"] = 2
         return game_state
+
+    def after_hand_played(
+        self,
+        cards: Iterable[Any],
+        game_state: dict[str, Any],
+    ) -> BossPostPlayResult:
+        """Request two random cards from the remaining hand to be discarded."""
+        del cards, game_state
+        return BossPostPlayResult(discard_count=2)
 
 
 class WallBoss(BossBlind):
-    """La Muralla: Puntuación requerida masiva (4.0x base)."""
+    """The Wall: substantially larger score target."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="La Muralla",
-            description="Puntuación requerida extra grande",
+            description="La ciega exige un objetivo de fichas mucho mayor de lo normal.",
             effect_id="wall",
-            score_multiplier=4.0
+            score_multiplier=4.0,
         )
 
-    def apply_effect(self, game_state: dict) -> dict:
-        # No altera estado directamente; su efecto es puramente en la puntuación
+    def apply_effect(self, game_state: dict[str, Any]) -> dict[str, Any]:
+        """Mark the boss as target-score driven."""
+        game_state["boss_score_multiplier"] = self.score_multiplier
         return game_state
 
 
 class NeedleBoss(BossBlind):
-    """La Aguja: Solo 1 mano disponible, puntuación reducida (0.6x)."""
+    """The Needle: the player gets only one hand for the blind."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="La Aguja",
-            description="Solo tienes 1 mano disponible esta ronda",
+            description="Solo tienes 1 mano disponible en esta ciega.",
             effect_id="needle",
-            score_multiplier=2.0
+            score_multiplier=2.0,
         )
 
     def calculate_target_score(self, ante: int, custom_multiplier: float = 0.6) -> int:
-        return super().calculate_target_score(ante, custom_multiplier=custom_multiplier)
+        """Keep the original project's reduced Needle target behavior."""
+        return super().calculate_target_score(ante, custom_multiplier)
 
-    def apply_effect(self, game_state: dict) -> dict:
+    def apply_effect(self, game_state: dict[str, Any]) -> dict[str, Any]:
+        """Set the hand counter to one when the boss starts."""
         game_state["hands"] = 1
         return game_state
 
 
-# Pool de clases disponibles
-ALLOWED_BOSS_CLASSES = [HookBoss, WallBoss, NeedleBoss]
+class PsychicBoss(BossBlind):
+    """Four-card boss variant requested for this project."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="El Psíquico",
+            description="Solo puedes jugar manos de hasta 4 cartas.",
+            effect_id="psychic",
+            score_multiplier=2.0,
+        )
+
+    def apply_effect(self, game_state: dict[str, Any]) -> dict[str, Any]:
+        """Publish the four-card hand limit."""
+        game_state["max_play_size"] = 4
+        return game_state
+
+    def get_max_play_size(self, default_size: int) -> int:
+        """Reduce the normal maximum played-hand size to four cards."""
+        return min(default_size, 4)
 
 
-def get_random_boss_instance(seen_boss_ids: set) -> BossBlind:
-    """
-    Instancia un jefe aleatorio garantizando que no se repita 
-    uno previamente usado en la misma partida.
-    """
-    available = [b for b in ALLOWED_BOSS_CLASSES if b().effect_id not in seen_boss_ids]
-    
-    # Si por alguna razón se usaron todos los jefes, reinicia el filtro
-    if not available:
+class PillarBoss(BossBlind):
+    """The Pillar: cards played in the previous blind cannot be played again."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="El Pilar",
+            description="No puedes jugar cartas que hayas jugado en la ciega anterior.",
+            effect_id="pillar",
+            score_multiplier=2.0,
+        )
+
+    def apply_effect(self, game_state: dict[str, Any]) -> dict[str, Any]:
+        """Load the previous blind's played card codes into the active rule."""
+        game_state["previous_blind_played_card_codes"] = set(
+            game_state.get("previous_blind_played_card_codes", set())
+        )
+        return game_state
+
+    def validate_play(
+        self,
+        cards: Iterable[Any],
+        game_state: dict[str, Any],
+    ) -> BossValidationResult:
+        """Reject any hand containing a card played during the previous blind."""
+        banned_codes = set(game_state.get("previous_blind_played_card_codes", set()))
+        conflicting_codes = [card.code for card in cards if card.code in banned_codes]
+        if conflicting_codes:
+            return BossValidationResult(
+                False,
+                "El Pilar prohíbe las cartas jugadas en la ciega anterior.",
+            )
+        return BossValidationResult(True)
+
+
+class SuitRestrictionBoss(BossBlind):
+    """Base class for bosses that forbid one card suit."""
+
+    restricted_suit = ""
+    suit_label = ""
+
+    def __init__(self, name: str, effect_id: str) -> None:
+        super().__init__(
+            name=name,
+            description=f"No puedes jugar cartas de {self.suit_label.lower()}.",
+            effect_id=effect_id,
+            score_multiplier=2.0,
+        )
+
+    def apply_effect(self, game_state: dict[str, Any]) -> dict[str, Any]:
+        """Publish the restricted suit to the active game state."""
+        game_state["restricted_suit"] = self.restricted_suit
+        return game_state
+
+    def validate_play(
+        self,
+        cards: Iterable[Any],
+        game_state: dict[str, Any],
+    ) -> BossValidationResult:
+        """Reject a hand containing a card from the restricted suit."""
+        del game_state
+        if any(card.suit == self.restricted_suit for card in cards):
+            return BossValidationResult(
+                False,
+                f"{self.name}: no puedes jugar cartas de {self.suit_label.lower()}.",
+            )
+        return BossValidationResult(True)
+
+
+class HeartBoss(SuitRestrictionBoss):
+    """The Head: hearts are forbidden."""
+
+    def __init__(self) -> None:
+        self.restricted_suit = "♥"
+        self.suit_label = "corazones"
+        super().__init__(name="La Cabeza", effect_id="hearts")
+
+
+class DiamondBoss(SuitRestrictionBoss):
+    """The Window: diamonds are forbidden."""
+
+    def __init__(self) -> None:
+        self.restricted_suit = "♦"
+        self.suit_label = "diamantes"
+        super().__init__(name="La Ventana", effect_id="diamonds")
+
+
+class ClubBoss(SuitRestrictionBoss):
+    """The Club: clubs are forbidden."""
+
+    def __init__(self) -> None:
+        self.restricted_suit = "♣"
+        self.suit_label = "tréboles"
+        super().__init__(name="El Trébol", effect_id="clubs")
+
+
+class SpadeBoss(SuitRestrictionBoss):
+    """The Goad: spades are forbidden."""
+
+    def __init__(self) -> None:
+        self.restricted_suit = "♠"
+        self.suit_label = "picas"
+        super().__init__(name="El Aguijón", effect_id="spades")
+
+
+ALLOWED_BOSS_CLASSES = [
+    HookBoss,
+    WallBoss,
+    NeedleBoss,
+    PsychicBoss,
+    PillarBoss,
+    HeartBoss,
+    DiamondBoss,
+    ClubBoss,
+    SpadeBoss,
+]
+
+
+def get_random_boss_instance(seen_boss_ids: set[str]) -> BossBlind:
+    """Return an unseen boss instance and record its effect identifier."""
+    available_classes = [
+        boss_class
+        for boss_class in ALLOWED_BOSS_CLASSES
+        if boss_class().effect_id not in seen_boss_ids
+    ]
+
+    if not available_classes:
         seen_boss_ids.clear()
-        available = ALLOWED_BOSS_CLASSES
+        available_classes = list(ALLOWED_BOSS_CLASSES)
 
-    chosen_class = random.choice(available)
+    chosen_class = random.choice(available_classes)
     instance = chosen_class()
     seen_boss_ids.add(instance.effect_id)
     return instance
