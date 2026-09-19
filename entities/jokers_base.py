@@ -43,7 +43,12 @@ class Joker(ABC):
 
     def to_dict(self) -> dict:
         """Expone el estado del Comodín en un formato de diccionario fácil de renderizar."""
-        return {"name": self.name, "probability": self.probability, "active": self.active}
+        return {
+            "name": self.name,
+            "description": getattr(self, "description", "Efecto especial"),
+            "probability": self.probability,
+            "active": self.active,
+        }
 
 
 # =====================================================================

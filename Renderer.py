@@ -18,6 +18,47 @@ COLOR_CHIPS = (80, 160, 255)
 COLOR_MULT = (255, 80, 80)
 
 
+def draw_joker_tooltip(screen, joker_data):
+    """Draw the centered name and description of the hovered Joker."""
+    if isinstance(joker_data, dict):
+        name = joker_data.get("name", "Joker")
+        description = joker_data.get("description", "Efecto especial")
+    else:
+        name = getattr(joker_data, "name", "Joker")
+        description = getattr(joker_data, "description", "Efecto especial")
+
+    title_font = pygame.font.SysFont("Arial", 30, bold=True)
+    body_font = pygame.font.SysFont("Arial", 20)
+    max_width = min(760, screen.get_width() - 100)
+    lines = []
+    current_line = ""
+    for word in str(description).split():
+        candidate = f"{current_line} {word}".strip()
+        if current_line and body_font.size(candidate)[0] > max_width:
+            lines.append(current_line)
+            current_line = word
+        else:
+            current_line = candidate
+    if current_line:
+        lines.append(current_line)
+
+    title_surface = title_font.render(str(name), True, (255, 215, 0))
+    line_surfaces = [body_font.render(line, True, COLOR_TEXT_MAIN) for line in lines]
+    content_height = title_surface.get_height() + 18 + sum(
+        surface.get_height() + 6 for surface in line_surfaces
+    )
+    panel = pygame.Surface((max_width + 60, content_height + 36), pygame.SRCALPHA)
+    panel.fill((10, 14, 20, 235))
+    panel_rect = panel.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
+    pygame.draw.rect(panel, (220, 220, 250, 255), panel.get_rect(), width=2, border_radius=10)
+    panel.blit(title_surface, title_surface.get_rect(midtop=(panel.get_width() // 2, 16)))
+    text_y = title_surface.get_height() + 30
+    for surface in line_surfaces:
+        panel.blit(surface, surface.get_rect(centerx=panel.get_width() // 2, y=text_y))
+        text_y += surface.get_height() + 6
+    screen.blit(panel, panel_rect)
+
+
 class Renderer:
     """Clase principal de dibujado optimizada con cache de textos."""
 
@@ -89,6 +130,11 @@ class Renderer:
         txt_surface = self.font_main.render(name_str, True, COLOR_TEXT_MAIN)
         self.screen.blit(txt_surface, (x + 5, y + 28))
 
+    @staticmethod
+    def joker_rect(x, y):
+        """Return the screen rectangle occupied by one Joker."""
+        return pygame.Rect(x, y, 80, 85)
+
     def draw_consumable(self, item_data, x, y):
         rect = pygame.Rect(x, y, 65, 95)
         pygame.draw.rect(self.screen, (30, 120, 100), rect, border_radius=6)
@@ -135,10 +181,15 @@ class Renderer:
         self.screen.blit(title, (x, y - 18))
         self.screen.blit(details, (x, y + 20))
 
-    def draw_joker_bar(self, jokers_list):
+    def draw_joker_bar(self, jokers_list, mouse_pos=None):
         start_x = 300
+        hovered = None
         for i, joker in enumerate(jokers_list):
-            self.draw_joker(joker, start_x + i * 90, 42, is_active=joker.get("active", False))
+            x = start_x + i * 90
+            self.draw_joker(joker, x, 42, is_active=joker.get("active", False))
+            if mouse_pos is not None and self.joker_rect(x, 42).collidepoint(mouse_pos):
+                hovered = joker
+        return hovered
 
     def draw_consumables_bar(self, consumables_list):
         start_x = 980

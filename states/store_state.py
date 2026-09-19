@@ -13,7 +13,7 @@ import random
 
 import pygame
 
-from entities import Joker, FlatChipsJoker, MultiplierJoker
+from entities import Joker
 from states.base_state import BaseState
 from systems.bosses import BossBlind, BASE_ANTE_TARGETS, get_random_boss_instance
 
@@ -179,8 +179,8 @@ class StoreState(BaseState):
             lambda: (StoreFlatJoker("Acumulador", 20 + ante * 4), 8 + ante * 2),
             lambda: (StoreMultiplierJoker("Impulso", 1.0), 7 + ante),
             lambda: (StoreMultiplierJoker("Potenciador", 2.0), 10 + ante * 2),
-            lambda: (FlatChipsJoker(amount=15 + ante * 5), 6 + ante),
-            lambda: (MultiplierJoker(amount=0.5), 8 + ante),
+            lambda: (StoreFlatJoker("Bono de Fichas", 15 + ante * 5), 6 + ante),
+            lambda: (StoreMultiplierJoker("Bono de Mult", 0.5), 8 + ante),
         ]
 
         self.offers = []

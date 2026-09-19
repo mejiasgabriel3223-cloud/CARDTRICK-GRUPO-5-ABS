@@ -14,7 +14,7 @@ import random
 import pygame
 
 from states.base_state import BaseState
-from Renderer import Renderer
+from Renderer import Renderer, draw_joker_tooltip
 from animaciones import AnimationController
 from audio import get_audio_manager
 from menu.gestor_config import GestorConfig
@@ -478,7 +478,9 @@ class PlayState(BaseState):
             self.hands_left,
             self.discards_left,
         )
-        self.renderer.draw_joker_bar(self.jokers.to_dict())
+        hovered_joker = self.renderer.draw_joker_bar(
+            self.jokers.to_dict(), pygame.mouse.get_pos()
+        )
 
         hidden_card_ids = self.animations.hidden_card_ids
         card_data = [
@@ -494,6 +496,8 @@ class PlayState(BaseState):
         font = pygame.font.SysFont("Arial", 18, bold=True)
         text = font.render(self.message, True, (255, 255, 255))
         target_screen.blit(text, (300, target_screen.get_height() - 92))
+        if hovered_joker is not None:
+            draw_joker_tooltip(target_screen, hovered_joker)
 
     def _draw_sort_buttons(self, screen: pygame.Surface) -> None:
         """Draw the two card sorting actions."""
