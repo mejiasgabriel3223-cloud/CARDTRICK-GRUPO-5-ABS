@@ -1,5 +1,4 @@
-"""Clases base abstractas para Comodines (Jokers) e interfaz polimórfica."""
-
+"""Jerarquía abstracta y contenedor polimórfico de los Jokers."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -9,65 +8,102 @@ from typing import Iterable
 
 from .entities import CardEntity, EntityCollection
 from .rules import GameRules
+from systems.assets import AssetResolver
+from systems.joker_catalog import metadata_for
 
 
 class Joker(ABC):
-    """Define la interfaz común para el efecto de cada Comodín.
-
-    Cada Comodín tiene una probabilidad entre 0 y 1. El método público ``activate``
-    gestiona la verificación de probabilidad, mientras que las subclases implementan
-    ``apply`` con su propio efecto. Esto permite tratar diferentes clases de Jokers
-    mediante una interfaz común, demostrando polimorfismo.
-    """
+    """Contrato común de todos los comodines."""
 
     def __init__(self, name: str, probability: float = 1.0) -> None:
-        """Crea un Comodín con un nombre visible y una probabilidad de activación."""
         if not 0.0 <= probability <= 1.0:
             raise ValueError("la probabilidad debe estar entre 0 y 1")
         self.name = name
         self.probability = probability
         self.active = True
+        self.description = "Efecto especial."
+        self.rarity = "Común"
+        self.shop_price = 0
+        self.sell_price = 1
+        self.asset_path = ""
+        self._configure_metadata()
+
+    def _configure_metadata(self) -> None:
+        metadata = metadata_for(type(self).__name__)
+        if self.name.startswith("Base ") or self.name == type(self).__name__:
+            self.name = metadata.display_name
+        self.description = metadata.description
+        self.rarity = metadata.rarity
+        self.shop_price = metadata.price
+        self.sell_price = metadata.sell_price
+
+        # Resolver el asset aquí mantiene el renderer libre de reglas de dominio.
+        try:
+            resolver = AssetResolver(_project_root_from_module())
+            self.asset_path = resolver.random_joker_asset()
+        except Exception:
+            self.asset_path = ""
 
     @abstractmethod
     def apply(self, cards: Iterable[CardEntity]) -> bool:
-        """Aplica el efecto concreto del Comodín y devuelve si se aplicó o no."""
         raise NotImplementedError
 
     def activate(self, cards: Iterable[CardEntity]) -> bool:
-        """Evalúa la probabilidad y aplica el Comodín solo si se activa."""
         if not self.active:
             return False
         if random.random() < self.probability:
             return self.apply(cards)
         return False
 
+    def set_shop_price(self, price: int) -> None:
+        self.shop_price = max(1, int(price))
+        self.sell_price = max(1, self.shop_price // 2)
+
     def to_dict(self) -> dict:
-        """Expone el estado del Comodín en un formato de diccionario fácil de renderizar."""
         return {
             "name": self.name,
-            "description": getattr(self, "description", "Efecto especial"),
+            "description": self.description,
+            "rarity": self.rarity,
             "probability": self.probability,
             "active": self.active,
+            "shop_price": self.shop_price,
+            "sell_price": self.sell_price,
+            "asset_path": self.asset_path,
+            "uses_left": getattr(self, "uses_left", None),
+            "current_mult": getattr(self, "current_mult", None),
         }
 
 
-# =====================================================================
-# CLASES BASE INTERMEDIAS (ABSTRACTAS)
-# =====================================================================
-
-@dataclass
 class FlatChipsJoker(Joker, ABC):
-    """Clase base abstracta para comodines que suman una cantidad fija de fichas a las cartas."""
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
 
     amount: int = 20
     probability: float = 1.0
 
     def __post_init__(self) -> None:
-        super().__init__("Base Fichas Plana", self.probability)
+        super().__init__("Base Fichas Plana", getattr(self, "probability", 1.0))
 
     @abstractmethod
     def apply(self, cards: Iterable[CardEntity]) -> bool:
-        """Aumenta el puntaje de las cartas. Debe ser implementado o invocado por subclases."""
+        applied = False
+        for card in cards:
+            card.apply_bonus(score_delta=self.amount)
+            applied = True
+        return applied
+
+
+@dataclass
+class _FlatDataclassMixin(FlatChipsJoker):
+    """Compatibilidad interna para dataclass children; no se instancia directamente."""
+
+    amount: int = 20
+    probability: float = 1.0
+
+    def __post_init__(self) -> None:
+        Joker.__init__(self, "Base Fichas Plana", self.probability)
+
+    def apply(self, cards: Iterable[CardEntity]) -> bool:
         applied = False
         for card in cards:
             card.apply_bonus(score_delta=self.amount)
@@ -77,17 +113,14 @@ class FlatChipsJoker(Joker, ABC):
 
 @dataclass
 class MultiplierJoker(Joker, ABC):
-    """Clase base abstracta para comodines que aumentan el multiplicador de las cartas."""
-
     amount: float = 1.0
     probability: float = 1.0
 
     def __post_init__(self) -> None:
-        super().__init__("Base Multiplicador", self.probability)
+        Joker.__init__(self, "Base Multiplicador", self.probability)
 
     @abstractmethod
     def apply(self, cards: Iterable[CardEntity]) -> bool:
-        """Aumenta el multiplicador de las cartas. Debe ser implementado o invocado por subclases."""
         applied = False
         for card in cards:
             card.apply_bonus(multiplier_delta=self.amount)
@@ -97,133 +130,84 @@ class MultiplierJoker(Joker, ABC):
 
 @dataclass
 class SuitBonusJoker(MultiplierJoker, ABC):
-    """Clase base abstracta para comodines enfocados en un palo/pinta específico.
-
-    Hereda la lógica de multiplicador de MultiplierJoker y agrega el filtrado
-    por palo. Tampoco es instanciable directamente.
-    """
-
-    target_suit: str = "♥"  # Símbolos: '♥', '♦', '♣', '♠'
+    target_suit: str = "♥"
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        nombres_pintas = {"♥": "Corazones", "♦": "Diamantes", "♣": "Tréboles", "♠": "Picas"}
-        nombre_pinta = nombres_pintas.get(self.target_suit, self.target_suit)
-        self.name = f"Especialista en {nombre_pinta}"
+        names = {"♥": "Corazones", "♦": "Diamantes", "♣": "Tréboles", "♠": "Picas"}
+        self.name = f"Especialista en {names.get(self.target_suit, self.target_suit)}"
+        self._configure_metadata()
 
     @abstractmethod
     def apply(self, cards: Iterable[CardEntity]) -> bool:
-        """Filtra las cartas por palo y delega la aplicación del bono a MultiplierJoker."""
-        cards_filtradas = [c for c in cards if getattr(c, "suit", None) == self.target_suit]
-        if not cards_filtradas:
+        filtered = [c for c in cards if getattr(c, "suit", None) == self.target_suit]
+        if not filtered:
             return False
-        return super().apply(cards_filtradas)
+        return MultiplierJoker.apply(self, filtered)
 
 
 @dataclass
 class FragileJoker(Joker, ABC):
-    """Clase base abstracta para comodines que tienen una vida útil limitada o condiciones de destrucción.
-
-    Mantiene un contador de usos o un estado de durabilidad. Una vez que se cumple
-    la condición de desgaste (por ejemplo, agotar sus usos), el comodín se desactiva
-    automáticamente para evitar futuras ejecuciones.
-    """
-
     uses_left: int = 3
     probability: float = 1.0
 
     def __post_init__(self) -> None:
-        """Inicializa la clase base de Joker y valida el límite de usos."""
         if self.uses_left <= 0:
             raise ValueError("Los usos iniciales deben ser mayores a 0")
-        super().__init__("Base Frágil", self.probability)
+        Joker.__init__(self, "Base Frágil", self.probability)
 
     @abstractmethod
     def apply(self, cards: Iterable[CardEntity]) -> bool:
-        """Aplica el efecto del comodín frágil. 
-
-        Las subclases deben llamar a super().apply(cards) o ejecutar _consume_use()
-        para decrementar la durabilidad tras un uso exitoso.
-        """
-        if self.uses_left <= 0 or not self.active:
-            return False
-        return True
+        return self.uses_left > 0 and self.active
 
     def _consume_use(self) -> None:
-        """Reduce la durabilidad del comodín y lo destruye/desactiva al llegar a cero."""
         self.uses_left -= 1
         if self.uses_left <= 0:
             self.active = False
 
-    def to_dict(self) -> dict:
-        """Extiende la serialización para incluir los usos restantes."""
-        data = super().to_dict()
-        data["uses_left"] = self.uses_left
-        return data
-    
+
 class FoodJokerMixin:
-    """Clase marcadora para identificar comodines de tipo comida."""
-    pass
+    """Marca polimórfica para identificar Jokers de comida."""
+
 
 @dataclass
 class CannibalJoker(Joker, ABC):
-    """Clase base abstracta para comodines que devoran al comodín de su izquierda."""
-
-    mult_growth: float = 3.0  # Incremento base predeterminado
-    current_mult: float = 0.0  # Multiplicador acumulado actual
+    mult_growth: float = 3.0
+    current_mult: float = 0.0
     probability: float = 1.0
 
     def __post_init__(self) -> None:
-        super().__init__("Base Caníbal", self.probability)
+        Joker.__init__(self, "Base Caníbal", self.probability)
 
     def _consume_left_joker(self, jokers_pool: list[Joker]) -> Joker | None:
-        """Busca y destruye el comodín ubicado exactamente a la izquierda."""
         try:
-            my_index = jokers_pool.index(self)
+            index = jokers_pool.index(self)
         except ValueError:
             return None
-
-        if my_index == 0:
+        if index == 0:
             return None
-
-        left_joker = jokers_pool[my_index - 1]
-
-        if not left_joker.active:
+        victim = jokers_pool[index - 1]
+        if not victim.active:
             return None
-
-        left_joker.active = False  # Desactiva/mata al comodín de la izquierda
-        return left_joker
+        victim.active = False
+        return victim
 
     @abstractmethod
     def apply_with_pool(self, cards: Iterable[CardEntity], jokers_pool: list[Joker]) -> bool:
-        """Cada caníbal concreto define cómo incrementa su poder al comer."""
         raise NotImplementedError
 
     def apply(self, cards: Iterable[CardEntity]) -> bool:
-        """Método heredado de la interfaz base."""
+        del cards
         return False
 
-    def to_dict(self) -> dict:
-        """Incluye el multiplicador acumulado actual en la serialización."""
-        data = super().to_dict()
-        data["current_mult"] = self.current_mult
-        data["mult_growth"] = self.mult_growth
-        return data
 
 @dataclass
 class HandRequirementJoker(Joker, ABC):
-    """Clase base abstracta para comodines que solo se activan con un tipo de mano específico.
-
-    Recibe el nombre de la mano requerida (según las claves de ``GameRules.HAND_VALUES``, 
-    como 'Pair', 'Flush', 'Full House', etc.) y delega la lógica si la mano coincide.
-    """
-
     target_hand: str = "Pair"
     probability: float = 1.0
 
     def __post_init__(self) -> None:
-        """Inicializa la clase base de Joker con un nombre descriptivo."""
-        nombres_manos = {
+        translations = {
             "High Card": "Carta Alta",
             "Pair": "Par",
             "Two Pair": "Doble Par",
@@ -234,98 +218,148 @@ class HandRequirementJoker(Joker, ABC):
             "Four of a Kind": "Póker",
             "Straight Flush": "Escalera de Color",
         }
-        nombre_traduccion = nombres_manos.get(self.target_hand, self.target_hand)
-        super().__init__(f"Especialista en {nombre_traduccion}", self.probability)
+        Joker.__init__(self, f"Especialista en {translations.get(self.target_hand, self.target_hand)}", self.probability)
 
     @abstractmethod
     def apply(self, cards: Iterable[CardEntity]) -> bool:
-        """Aplica el efecto si la mano evaluada coincide con ``target_hand``.
-
-        Debe ser extendido o invocado por las subclases concretas.
-        """
         cards_list = list(cards)
         if not cards_list:
             return False
-
-        rules = GameRules()
-        hand_result = rules.evaluate(cards_list)
-
-        if hand_result.name != self.target_hand:
-            return False
-
-        return True
+        return GameRules().evaluate(cards_list).name == self.target_hand
 
 
 @dataclass
 class EconomyJoker(Joker, ABC):
-    """Clase base abstracta para comodines que afectan o dependen de la economía del jugador.
-
-    Permite manipular el saldo de dinero del jugador, otorgar bonificaciones
-    según el oro acumulado o modificar las recompensas al finalizar cada mano o ronda.
-    """
-
     base_reward: int = 4
     probability: float = 1.0
 
     def __post_init__(self) -> None:
-        """Inicializa la clase base de Joker con un nombre descriptivo."""
-        super().__init__("Base Economía", self.probability)
+        Joker.__init__(self, "Base Economía", self.probability)
 
     @abstractmethod
-    def apply_economy_effect(self, current_money: int) -> int:
-        """Calcula y devuelve la variación de dinero (ganancia o gasto).
-
-        Debe ser implementado por las subclases concretas para definir su
-        lógica financiera específica.
-        """
+    def apply_economy_effect(self, current_money: int, game_state: dict | None = None) -> int:
         raise NotImplementedError
 
     def apply(self, cards: Iterable[CardEntity]) -> bool:
-        """Aplica el efecto estándar devolviendo True si el comodín logró ejecutarse.
-
-        Las subclases concretas pueden sobreescribir este método para otorgar
-        bonos de combate directos basados en el saldo actual de la economía.
-        """
-        return True
+        del cards
+        return False
 
 
 @dataclass
 class DiscardDependentJoker(Joker, ABC):
-    """Clase base abstracta para comodines que se activan o ganan bonos al descartar cartas."""
-
     discards_required: int = 1
+    probability: float = 1.0
 
     def __post_init__(self) -> None:
-        super().__init__("Base de Descartes", self.probability)
+        Joker.__init__(self, "Base de Descartes", self.probability)
 
-    @abstractmethod
     def on_discard(self, discarded_cards: Iterable[CardEntity]) -> bool:
-        """Reacciona directamente cuando el jugador realiza un descarte."""
-        cards_list = list(discarded_cards)
-        if not cards_list:
+        cards = list(discarded_cards)
+        if not cards:
             return False
+        if hasattr(self, "discards_tracked"):
+            self.discards_tracked += 1
         return True
 
 
-# =====================================================================
-# POOL / CONTENEDOR DE COMODINES
-# =====================================================================
-
 class RandomJokerPool:
-    """Agrupa múltiples Comodines y activa cada uno de manera independiente."""
+    """Contenedor polimórfico que conoce el contexto necesario para cada Joker."""
 
-    def __init__(self, jokers: Iterable[Joker] | None = None) -> None:
-        self.jokers = list(jokers or [])
+    def __init__(self, jokers: Iterable[Joker] | None = None):
+        self.jokers = jokers if isinstance(jokers, list) else list(jokers or [])
 
     def add(self, joker: Joker) -> None:
         self.jokers.append(joker)
 
-    def activate_all(self, cards: EntityCollection[CardEntity]) -> list[str]:
-        activated = []
+    def activate_all(self, cards: EntityCollection[CardEntity], game_state: dict | None = None) -> list[str]:
+        state = dict(game_state or {})
+        activated: list[str] = []
+
+        for joker in list(self.jokers):
+            if not joker.active:
+                continue
+
+            # Los efectos económicos y de descarte se disparan en sus propios eventos.
+            if hasattr(joker, "apply_economy_effect"):
+                continue
+            if hasattr(joker, "on_discard"):
+                continue
+
+            applied = False
+            if hasattr(joker, "apply_with_pool"):
+                applied = bool(joker.activate(cards)) if not hasattr(joker, "apply_with_pool") else False
+                if not applied and random.random() < getattr(joker, "probability", 1.0):
+                    applied = bool(joker.apply_with_pool(cards, self.jokers))
+            elif hasattr(joker, "apply_with_money"):
+                money = int(state.get("money", 0))
+                if random.random() < getattr(joker, "probability", 1.0):
+                    result = joker.apply_with_money(cards, money)
+                    if isinstance(result, tuple):
+                        applied, money_delta = result
+                        if applied:
+                            state["money"] = money + int(money_delta)
+                    else:
+                        applied = bool(result)
+            elif hasattr(joker, "apply_with_stats"):
+                if random.random() < getattr(joker, "probability", 1.0):
+                    applied = bool(
+                        joker.apply_with_stats(
+                            cards,
+                            state.get("current_poker_hand", ""),
+                            state.get("most_played_poker_hand", ""),
+                        )
+                    )
+            else:
+                applied = joker.activate(cards)
+
+            if applied:
+                activated.append(joker.name)
+
+        if "money" in state and game_state is not None:
+            game_state["money"] = state["money"]
+
+        # Los Jokers agotados o consumidos salen de la colección activa.
+        self.jokers[:] = [joker for joker in self.jokers if joker.active]
+        return activated
+
+    def handle_discard(self, discarded_cards: Iterable[CardEntity]) -> list[str]:
+        cards = list(discarded_cards)
+        activated: list[str] = []
         for joker in self.jokers:
-            if joker.activate(cards):
+            handler = getattr(joker, "on_discard", None)
+            if handler is not None and handler(cards):
                 activated.append(joker.name)
         return activated
 
+    def apply_economy_effects(self, current_money: int, game_state: dict | None = None) -> int:
+        total_delta = 0
+        state = game_state or {}
+        for joker in self.jokers:
+            if not joker.active:
+                continue
+            effect = getattr(joker, "apply_economy_effect", None)
+            if effect is None:
+                continue
+            total_delta += int(effect(current_money, state))
+        return total_delta
+
+    def debt_limit(self) -> int:
+        return max(
+            [0]
+            + [int(getattr(joker, "get_max_debt_limit")()) for joker in self.jokers if hasattr(joker, "get_max_debt_limit")]
+        )
+
+    def reorder(self, source_index: int, target_index: int) -> None:
+        if not (0 <= source_index < len(self.jokers)):
+            return
+        target_index = max(0, min(target_index, len(self.jokers) - 1))
+        joker = self.jokers.pop(source_index)
+        self.jokers.insert(target_index, joker)
+
     def to_dict(self) -> list[dict]:
         return [joker.to_dict() for joker in self.jokers]
+
+
+def _project_root_from_module():
+    """Resuelve el root sin almacenar rutas dentro de las entidades."""
+    return __import__("pathlib").Path(__file__).resolve().parent.parent
