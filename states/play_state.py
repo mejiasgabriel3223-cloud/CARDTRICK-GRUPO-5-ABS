@@ -77,6 +77,7 @@ class PlayState(BaseState):
     def enter(self) -> None:
         """Activate the state and load the currently selected blind/boss."""
         self.card_factory.set_skin(GestorConfig.obtener_skin_activa())
+        self.background = self._load_background()
         self.audio.play_game_music()
         self.round_number = int(self.context.get("round", self.round_number))
         self.target = int(self.context.get("blind_target", 100 * self.round_number))

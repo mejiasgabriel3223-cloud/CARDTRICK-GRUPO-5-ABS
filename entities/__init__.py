@@ -7,7 +7,8 @@ from .entities import Entity, CardEntity, EntityCollection
 from .card_factory import CardFactory
 
 # Import the abstract Joker and the concrete polymorphic implementations.
-from .jokers import Joker, FlatChipsJoker, MultiplierJoker, RandomJokerPool
+from .jokers_base import Joker, RandomJokerPool
+from .jokers import FlatChipsJoker, MultiplierJoker
 
 # Import the global rules and immutable hand-result value object.
 from .rules import GameRules, HandResult

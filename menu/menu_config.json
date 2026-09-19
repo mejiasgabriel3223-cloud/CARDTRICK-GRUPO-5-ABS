@@ -2,7 +2,7 @@
   "card_skin": "light",
   "recursos": {
     "fondo": "assets/fondo_menu.png",
-    "fondo_menu": "assets/fondo_menu.png",
+    "fondo_menu": "assets/fondo_menu.mp4",
     "fondo_juego": "assets/fondo_juego.jpeg",
     "titulo": "",
     "video": "assets/fondo_menu.mp4"

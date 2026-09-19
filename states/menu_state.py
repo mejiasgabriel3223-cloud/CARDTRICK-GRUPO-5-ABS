@@ -346,23 +346,7 @@ class MenuState:
         # Video de fondo
         self.cap = None
         self.surface_video = None
-        ruta_video = ASSETS_DIR / "fondo_menu.mp4"
-        if cv2 and ruta_video.exists():
-            try:
-                self.cap = cv2.VideoCapture(str(ruta_video))
-            except Exception as e:
-                print(f"Error al inicializar fondo_menu.mp4: {e}")
-                self.cap = None
-
-        if not self.cap:
-            self.surface_video = pygame.Surface(screen.get_size())
-            self.surface_video.fill((15, 25, 45))
-        else:
-            ret, frame = self.cap.read()
-            if ret:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame = cv2.resize(frame, (screen.get_width(), screen.get_height()))
-                self.surface_video = pygame.image.frombuffer(frame.tobytes(), frame.shape[1::-1], "RGB")
+        self._reload_background()
 
         # Registrar subpantallas
         self.pantallas = {
@@ -374,9 +358,42 @@ class MenuState:
         }
         self.estado_actual = "PRINCIPAL"
 
+    def _reload_background(self):
+        self.cap = None
+        self.surface_video = None
+
+        ruta_video = ASSETS_DIR / "fondo_menu.mp4"
+        if cv2 and ruta_video.exists():
+            try:
+                self.cap = cv2.VideoCapture(str(ruta_video))
+            except Exception as e:
+                print(f"Error al inicializar fondo_menu.mp4: {e}")
+                self.cap = None
+
+        if not self.cap:
+            ruta_fondo = GestorConfig.obtener_fondo_menu()
+            if ruta_fondo:
+                try:
+                    fondo = pygame.image.load(ruta_fondo).convert_alpha()
+                    if fondo.get_size() != self.screen.get_size():
+                        fondo = pygame.transform.smoothscale(fondo, self.screen.get_size())
+                    self.surface_video = fondo
+                    return
+                except Exception:
+                    pass
+            self.surface_video = pygame.Surface(self.screen.get_size())
+            self.surface_video.fill((15, 25, 45))
+        else:
+            ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = cv2.resize(frame, (self.screen.get_width(), self.screen.get_height()))
+                self.surface_video = pygame.image.frombuffer(frame.tobytes(), frame.shape[1::-1], "RGB")
+
     def enter(self):
         self.senal_salida = None
         self.audio.play_menu_music()
+        self._reload_background()
         if self.cap:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 

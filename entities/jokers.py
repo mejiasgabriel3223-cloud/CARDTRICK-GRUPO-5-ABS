@@ -7,12 +7,16 @@ from typing import Iterable
 
 from .entities import CardEntity
 from .jokers_base import (
+    CannibalJoker,
     DiscardDependentJoker,
     EconomyJoker,
     FlatChipsJoker,
+    FoodJokerMixin,
     FragileJoker,
     HandRequirementJoker,
+    Joker,
     MultiplierJoker,
+    RandomJokerPool,
     SuitBonusJoker,
 )
 
@@ -306,7 +310,7 @@ class HeladoJoker(FragileJoker, FoodJokerMixin):
 
         return applied
 
-    @dataclass
+@dataclass
 class LetItRide(MultiplierJoker):
     """Otorga +15.0 al multiplicador, pero exige un costo de $2 por mano jugada."""
 

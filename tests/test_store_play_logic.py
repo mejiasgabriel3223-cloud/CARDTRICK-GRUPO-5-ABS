@@ -160,6 +160,17 @@ class StorePlayLogicTests(unittest.TestCase):
         self.assertEqual(store.jokers, [])
         self.assertIn(str(price), store.message)
 
+    def test_play_state_reloads_background_when_reentering(self):
+        context = {"money": 0, "jokers": [], "ante": 1, "blind_target": 100}
+        state = PlayState(self.screen, context)
+        state.background = "old-background"
+
+        with patch("states.play_state.GestorConfig.obtener_fondo_juego", return_value="assets/fondo_juego.jpeg"):
+            state.enter()
+
+        self.assertIsInstance(state.background, pygame.Surface)
+        self.assertEqual(state.background.get_size(), self.screen.get_size())
+
 def test_sell_selected_returns_half_purchase_price(self):
     context = {"money": 100, "jokers": [], "ante": 1}
     store = StoreState(self.screen, context)
