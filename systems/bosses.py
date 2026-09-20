@@ -85,6 +85,15 @@ class BossBlind(ABC):
         del cards, game_state
         return BossValidationResult(True)
 
+    def non_scoring_card_codes(
+        self,
+        cards: Iterable[Any],
+        game_state: dict[str, Any],
+    ) -> set[str]:
+        """Return card codes that can be played but must score zero."""
+        del cards, game_state
+        return set()
+
     def after_hand_played(
         self,
         cards: Iterable[Any],
@@ -204,7 +213,7 @@ class PillarBoss(BossBlind):
     def __init__(self) -> None:
         super().__init__(
             name="El Pilar",
-            description="No puedes jugar cartas que hayas jugado en la ciega anterior.",
+            description="Las cartas jugadas en la ciega anterior no tendrán puntuación.",
             effect_id="pillar",
             score_multiplier=2.0,
         )
@@ -221,15 +230,18 @@ class PillarBoss(BossBlind):
         cards: Iterable[Any],
         game_state: dict[str, Any],
     ) -> BossValidationResult:
-        """Reject any hand containing a card played during the previous blind."""
-        banned_codes = set(game_state.get("previous_blind_played_card_codes", set()))
-        conflicting_codes = [card.code for card in cards if card.code in banned_codes]
-        if conflicting_codes:
-            return BossValidationResult(
-                False,
-                "El Pilar prohíbe las cartas jugadas en la ciega anterior.",
-            )
+        """Keep the hand playable; previous cards are handled as zero-score cards."""
+        del cards, game_state
         return BossValidationResult(True)
+
+    def non_scoring_card_codes(
+        self,
+        cards: Iterable[Any],
+        game_state: dict[str, Any],
+    ) -> set[str]:
+        """Identify cards played during the previous blind."""
+        banned_codes = set(game_state.get("previous_blind_played_card_codes", set()))
+        return {card.code for card in cards if card.code in banned_codes}
 
 
 class SuitRestrictionBoss(BossBlind):
@@ -241,7 +253,7 @@ class SuitRestrictionBoss(BossBlind):
     def __init__(self, name: str, effect_id: str) -> None:
         super().__init__(
             name=name,
-            description=f"No puedes jugar cartas de {self.suit_label.lower()}.",
+            description=f"Las cartas de {self.suit_label.lower()} no tendrán puntuación.",
             effect_id=effect_id,
             score_multiplier=2.0,
         )
@@ -256,14 +268,18 @@ class SuitRestrictionBoss(BossBlind):
         cards: Iterable[Any],
         game_state: dict[str, Any],
     ) -> BossValidationResult:
-        """Reject a hand containing a card from the restricted suit."""
+        """Keep the hand playable; the restricted suit is handled as zero-score."""
         del game_state
-        if any(card.suit == self.restricted_suit for card in cards):
-            return BossValidationResult(
-                False,
-                f"{self.name}: no puedes jugar cartas de {self.suit_label.lower()}.",
-            )
         return BossValidationResult(True)
+
+    def non_scoring_card_codes(
+        self,
+        cards: Iterable[Any],
+        game_state: dict[str, Any],
+    ) -> set[str]:
+        """Identify cards from the restricted suit."""
+        del game_state
+        return {card.code for card in cards if card.suit == self.restricted_suit}
 
 
 class HeartBoss(SuitRestrictionBoss):

@@ -19,7 +19,7 @@ def card(code: str) -> CardEntity:
     return CardEntity(rank=rank, suit=suit)
 
 
-def test_suit_bosses_reject_their_restricted_suit() -> None:
+def test_suit_bosses_mark_their_restricted_suit_without_blocking_play() -> None:
     cases = [
         (HeartBoss(), "♥"),
         (DiamondBoss(), "♦"),
@@ -30,17 +30,23 @@ def test_suit_bosses_reject_their_restricted_suit() -> None:
     for boss, suit in cases:
         blocked = card(f"A{suit}")
         allowed = card("A♥" if suit != "♥" else "A♠")
-        assert not boss.validate_play([blocked], {}).allowed
+        assert boss.validate_play([blocked], {}).allowed
+        assert boss.non_scoring_card_codes([blocked], {}) == {blocked.code}
         assert boss.validate_play([allowed], {}).allowed
+        assert boss.non_scoring_card_codes([allowed], {}) == set()
 
 
-def test_pillar_rejects_cards_played_in_previous_blind() -> None:
+def test_pillar_marks_previous_cards_without_blocking_play() -> None:
     boss = PillarBoss()
     blocked = card("A♠")
-    assert not boss.validate_play(
+    assert boss.validate_play(
         [blocked],
         {"previous_blind_played_card_codes": {"A♠"}},
     ).allowed
+    assert boss.non_scoring_card_codes(
+        [blocked],
+        {"previous_blind_played_card_codes": {"A♠"}},
+    ) == {"A♠"}
 
 
 def test_pillar_allows_new_cards() -> None:

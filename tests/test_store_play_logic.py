@@ -11,6 +11,7 @@ from menu.gestor_config import GestorConfig
 from states.play_state import PlayState
 from states.store_state import StoreState
 from states.gameover_state import GameOverState
+from states.victory_state import VictoryState
 from entities import CardEntity
 
 
@@ -199,6 +200,36 @@ class StorePlayLogicTests(unittest.TestCase):
         self.assertEqual(context["money"], 0)
         self.assertEqual(context["jokers"], [])
         self.assertEqual(context["total_score"], 0)
+
+    def test_victory_resets_store_and_blinds_to_first_blind(self):
+        context = {
+            "round": 3,
+            "money": 50,
+            "jokers": [object()],
+            "ante": 3,
+            "blind_index": 2,
+            "blind_target": 2000,
+            "blind_name": "Jefe final",
+            "blind_is_boss": True,
+            "active_boss": object(),
+            "active_boss_ante": 3,
+            "seen_boss_ids": {"boss-1", "boss-2", "boss-3"},
+            "bosses_defeated": 3,
+            "total_score": 5000,
+            "victory_score": 5000,
+        }
+
+        VictoryState(self.screen, context).exit()
+
+        self.assertEqual(context["ante"], 1)
+        self.assertEqual(context["blind_index"], 0)
+        self.assertEqual(context["blind_name"], "Ciega pequeña")
+        self.assertFalse(context["blind_is_boss"])
+        self.assertIsNone(context["active_boss"])
+        self.assertEqual(context["money"], 0)
+        self.assertEqual(context["jokers"], [])
+        self.assertEqual(context["bosses_defeated"], 0)
+        self.assertEqual(context["victory_score"], 0)
 
 def test_sell_selected_returns_half_purchase_price(self):
     context = {"money": 100, "jokers": [], "ante": 1}

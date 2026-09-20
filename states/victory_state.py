@@ -19,7 +19,32 @@ class VictoryState:
         self.context["score"] = int(self.context.get("victory_score", self.context.get("total_score", 0)))
 
     def exit(self) -> None:
-        pass
+        """Reinicia la partida al salir de la pantalla de victoria."""
+        self.context.update({
+            "round": 1,
+            "money": 0,
+            "jokers": [],
+            "ante": 1,
+            "blind_index": 0,
+            "selected_blind": None,
+            "blind_target": 300,
+            "blind_target_preview": 300,
+            "blind_name": "Ciega pequeña",
+            "blind_is_boss": False,
+            "active_boss": None,
+            "active_boss_ante": None,
+            "seen_boss_ids": set(),
+            "previous_blind_played_card_codes": set(),
+            "hand_counts": {},
+            "total_discards": 0,
+            "bosses_defeated": 0,
+            "total_score": 0,
+            "victory_score": 0,
+            "score": 0,
+            "blind_won": False,
+            "is_boss_blind_won": False,
+            "round_reward": {"base": 0, "hands": 0, "discards": 0, "economy": 0, "total": 0},
+        })
 
     def handle_events(self, events):
         for event in events:

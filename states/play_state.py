@@ -333,15 +333,11 @@ class PlayState(BaseState):
         self.context["round"] = int(self.context.get("ante", 1))
         return False
 
-    def _validate_boss_play(self, selected: list[CardEntity]) -> bool:
+    def _non_scoring_boss_cards(self, selected: list[CardEntity]) -> set[str]:
         if self.active_boss is None:
-            return True
-        result = self.active_boss.validate_play(selected, self._boss_game_state())
-        if not result.allowed:
-            self.message = result.message
-            for card in selected:
-                card.selected = False
-        return result.allowed
+            return set()
+        self.active_boss.validate_play(selected, self._boss_game_state())
+        return self.active_boss.non_scoring_card_codes(selected, self._boss_game_state())
 
     def _apply_boss_post_play_effect(self) -> None:
         if self.active_boss is None:
@@ -368,32 +364,45 @@ class PlayState(BaseState):
         if self.hands_left <= 0:
             self.message = "No quedan manos disponibles"
             return None
-        if not self._validate_boss_play(selected):
-            return None
+        non_scoring_codes = self._non_scoring_boss_cards(selected)
+        scoring_cards = [card for card in selected if card.code not in non_scoring_codes]
 
-        best = self.rules.best_five(selected)
+        best = self.rules.best_five(scoring_cards) if scoring_cards else []
         self._sync_card_rects()
-        start_positions = [(card.rect.x, card.rect.y) for card in best if card.rect is not None]
+        start_positions = [(card.rect.x, card.rect.y) for card in selected if card.rect is not None]
 
-        provisional = self.rules.evaluate(best)
         hand_counts = self.context.setdefault("hand_counts", {})
-        most_played = max(hand_counts, key=hand_counts.get) if hand_counts else ""
-        joker_context = {
-            "money": int(self.context.get("money", 0)),
-            "current_poker_hand": provisional.name,
-            "most_played_poker_hand": most_played,
-        }
-        activated = self.jokers.activate_all(EntityCollection(best), joker_context)
-        self.context["money"] = joker_context.get("money", self.context.get("money", 0))
-        result = self.rules.evaluate(best)
+        if best:
+            provisional = self.rules.evaluate(best)
+            most_played = max(hand_counts, key=hand_counts.get) if hand_counts else ""
+            joker_context = {
+                "money": int(self.context.get("money", 0)),
+                "current_poker_hand": provisional.name,
+                "most_played_poker_hand": most_played,
+            }
+            activated = self.jokers.activate_all(EntityCollection(best), joker_context)
+            self.context["money"] = joker_context.get("money", self.context.get("money", 0))
+            result = self.rules.evaluate(best)
+        else:
+            activated = []
+            result = None
 
-        self.last_hand_name = result.name
-        hand_counts[result.name] = int(hand_counts.get(result.name, 0)) + 1
-        self.round_score += result.total
+        hand_name = result.name if result else "Sin puntuación"
+        hand_total = result.total if result else 0
+        self.last_hand_name = hand_name
+        if result:
+            hand_counts[result.name] = int(hand_counts.get(result.name, 0)) + 1
+        self.round_score += hand_total
         self.hands_left -= 1
-        self.played_card_codes.update(card.code for card in best)
+        self.played_card_codes.update(card.code for card in selected)
 
-        self.animations.play_cards(list(best), start_positions, result.name, result.total)
+        self.animations.play_cards(
+            list(selected),
+            start_positions,
+            hand_name,
+            hand_total,
+            non_scoring_codes,
+        )
         for card in selected:
             self.cards.remove(card)
 
@@ -408,8 +417,9 @@ class PlayState(BaseState):
 
         self._apply_boss_post_play_effect()
         joker_text = f" | Jokers: {', '.join(activated)}" if activated else ""
-        self.message = f"{result.name}: {result.total} pts | Acumulado: {self.round_score}/{self.target}{joker_text}"
-        return result.total
+        warning = " Estas cartas no tendrán puntuación." if non_scoring_codes else ""
+        self.message = f"{hand_name}: {hand_total} pts | Acumulado: {self.round_score}/{self.target}{warning}{joker_text}"
+        return hand_total
 
     def discard_selected(self) -> int | None:
         selected = self._selected_cards()

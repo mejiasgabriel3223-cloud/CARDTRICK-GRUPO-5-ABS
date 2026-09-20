@@ -20,6 +20,7 @@ class PlayAnimation:
 		self.elapsed = 0.0
 		self.result_name = ""
 		self.total = 0
+		self.non_scoring_codes: set[str] = set()
 		self.phase = "inactive"
 
 	@property
@@ -32,17 +33,20 @@ class PlayAnimation:
 		start_positions: list[tuple[float, float]],
 		result_name: str,
 		total: int,
+		non_scoring_codes: set[str] | None = None,
 	) -> None:
 		self.cards = list(cards)
 		self.start_positions = list(start_positions)
 		self.elapsed = 0.0
 		self.result_name = result_name
 		self.total = total
+		self.non_scoring_codes = set(non_scoring_codes or set())
 		self.phase = "entering"
 
 	def cancel(self) -> None:
 		self.cards = []
 		self.start_positions = []
+		self.non_scoring_codes = set()
 		self.elapsed = 0.0
 		self.phase = "inactive"
 
@@ -106,7 +110,8 @@ class PlayAnimation:
 
 			value = RANK_VALUES.get(card.rank, card.rank)
 			font = pygame.font.SysFont("Arial", 24, bold=True)
-			label = font.render(f"+{value}", True, (255, 225, 80))
+			label_value = 0 if card.code in self.non_scoring_codes else value
+			label = font.render(f"+{label_value}", True, (255, 225, 80))
 			label_rect = label.get_rect(center=(x + card_width // 2, y - 12))
 			screen.blit(label, label_rect)
 
@@ -194,8 +199,15 @@ class AnimationController:
 		start_positions: list[tuple[float, float]],
 		result_name: str,
 		total: int,
+		non_scoring_codes: set[str] | None = None,
 	) -> None:
-		self.play_cards_animation.start(cards, start_positions, result_name, total)
+		self.play_cards_animation.start(
+			cards,
+			start_positions,
+			result_name,
+			total,
+			non_scoring_codes,
+		)
 
 	def refill_cards(
 		self,
