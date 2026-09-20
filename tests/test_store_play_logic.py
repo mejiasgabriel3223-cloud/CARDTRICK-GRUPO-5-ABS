@@ -10,6 +10,7 @@ import pygame
 from menu.gestor_config import GestorConfig
 from states.play_state import PlayState
 from states.store_state import StoreState
+from states.gameover_state import GameOverState
 from entities import CardEntity
 
 
@@ -170,6 +171,34 @@ class StorePlayLogicTests(unittest.TestCase):
 
         self.assertIsInstance(state.background, pygame.Surface)
         self.assertEqual(state.background.get_size(), self.screen.get_size())
+
+    def test_game_over_resets_progress_to_first_blind(self):
+        context = {
+            "round": 4,
+            "money": 25,
+            "jokers": [object()],
+            "ante": 2,
+            "blind_index": 2,
+            "blind_target": 1300,
+            "blind_name": "Jefe actual",
+            "blind_is_boss": True,
+            "active_boss": object(),
+            "active_boss_ante": 2,
+            "seen_boss_ids": {"boss"},
+            "bosses_defeated": 1,
+            "total_score": 1500,
+        }
+
+        GameOverState(self.screen, context).exit()
+
+        self.assertEqual(context["ante"], 1)
+        self.assertEqual(context["blind_index"], 0)
+        self.assertEqual(context["blind_name"], "Ciega pequeña")
+        self.assertFalse(context["blind_is_boss"])
+        self.assertIsNone(context["active_boss"])
+        self.assertEqual(context["money"], 0)
+        self.assertEqual(context["jokers"], [])
+        self.assertEqual(context["total_score"], 0)
 
 def test_sell_selected_returns_half_purchase_price(self):
     context = {"money": 100, "jokers": [], "ante": 1}
