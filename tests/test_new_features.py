@@ -30,6 +30,14 @@ def test_joker_assets_exist_in_repository():
     assert all(cls().asset_path for cls in ALL_JOKERS)
 
 
+def test_brenda_uses_special_asset_and_every_joker_has_stable_asset_mapping():
+    resolver = AssetResolver(ROOT)
+    brenda_cls = next(cls for cls in ALL_JOKERS if cls.__name__ == "BrendaMadagascarJoker")
+    brenda = brenda_cls()
+    assert brenda.asset_path.endswith("joker-Especial.png")
+    assert all(resolver.joker_asset_for(cls.__name__) for cls in ALL_JOKERS)
+
+
 def test_blind_progression_starts_at_300_and_steps_200():
     assert StoreState.blind_target(1, 0) == 300
     assert StoreState.blind_target(1, 1) == 500

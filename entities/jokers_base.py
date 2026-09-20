@@ -40,7 +40,7 @@ class Joker(ABC):
         # Resolver el asset aquí mantiene el renderer libre de reglas de dominio.
         try:
             resolver = AssetResolver(_project_root_from_module())
-            self.asset_path = resolver.random_joker_asset()
+            self.asset_path = resolver.joker_asset_for(type(self).__name__)
         except Exception:
             self.asset_path = ""
 
