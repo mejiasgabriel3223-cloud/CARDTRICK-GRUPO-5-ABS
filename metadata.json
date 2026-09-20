@@ -1,0 +1,6 @@
+```json 
+{ "title": "CardTrick", 
+"description": "Un juego roguelike en donde debes construir una build mediante comodines para poder triunfar.", 
+"authors": ["Diego Velasquez", "Salvador Cordova", "Gabriel Mejias", "Yonathan Guaina"],
+"group_number": 5, 
+"controls": "D para Descartar, Espacio para Jugar la Mano." } ```
